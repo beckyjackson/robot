@@ -14,10 +14,15 @@ import org.semanticweb.owlapi.util.OWLEntityRenamer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Replace entity usages in an ontology.
+ *
+ * @author <a href="mailto:rctauber@gmail.com">Becky Tauber</a>
+ */
 public class ReplaceOperation {
 
   /** Logger. */
-  private static final Logger logger = LoggerFactory.getLogger(RenameOperation.class);
+  private static final Logger logger = LoggerFactory.getLogger(ReplaceOperation.class);
 
   /** Namespace for error messages. */
   private static final String NS = "replace#";
@@ -117,23 +122,19 @@ public class ReplaceOperation {
 
     // Maybe check for dangling entities
     if (!allowDangling) {
-      Set<OWLObject> objects = new HashSet<>();
-      for (OWLAxiom ax : ontology.getAxioms()) {
-        objects.addAll(OntologyHelper.getObjects(ax));
-      }
       Set<OWLEntity> dangling = new HashSet<>();
-      for (OWLObject object : objects) {
-        if (object instanceof OWLEntity) {
-          OWLEntity e = (OWLEntity) object;
-          if (InvalidReferenceChecker.isDangling(ontology, e)) {
-            dangling.add(e);
-          }
+      for (OWLEntity e : OntologyHelper.getEntities(ontology)) {
+        if (InvalidReferenceChecker.isDangling(ontology, e)) {
+          dangling.add(e);
         }
       }
       if (!dangling.isEmpty()) {
-        logger.error("Ontology contains %d dangling entities:", dangling.size());
+        logger.error(
+            String.format(
+                "REPLACE FAILED - ontology contains %s dangling entities:",
+                String.valueOf(dangling.size())));
         for (OWLEntity d : dangling) {
-          logger.error(" - %s", d.getIRI().toString());
+          System.out.println(d.getIRI().toString());
         }
         // Kill process
         System.exit(1);
@@ -149,12 +150,12 @@ public class ReplaceOperation {
    * @param mappings map of left IRI -> right IRI
    */
   public static void replaceAll(OWLOntology ontology, Map<IRI, IRI> mappings) {
-    OWLEntityRenamer entityRenamer =
-        new OWLEntityRenamer(ontology.getOWLOntologyManager(), Sets.newHashSet(ontology));
+    OWLOntologyManager manager = ontology.getOWLOntologyManager();
+    OWLEntityRenamer entityRenamer = new OWLEntityRenamer(manager, Sets.newHashSet(ontology));
     for (Map.Entry<IRI, IRI> mapping : mappings.entrySet()) {
       IRI leftIRI = mapping.getKey();
       IRI rightIRI = mapping.getValue();
-      entityRenamer.changeIRI(leftIRI, rightIRI);
+      manager.applyChanges(entityRenamer.changeIRI(leftIRI, rightIRI));
     }
   }
 
@@ -182,11 +183,15 @@ public class ReplaceOperation {
       // This may be slow, but prevents overlaps where another IRI to replace may be a subject
       OWLOntology subset = manager.createOntology(axioms);
       OWLEntityRenamer entityRenamer = new OWLEntityRenamer(manager, Sets.newHashSet(subset));
-      entityRenamer.changeIRI(leftIRI, rightIRI);
+      manager.applyChanges(entityRenamer.changeIRI(leftIRI, rightIRI));
       // Remove the referencing axioms from original ontology
       manager.removeAxioms(ontology, axioms);
       // Add the new subset to the list to merge later
       subsets.add(subset);
+      logger.info(
+          String.format(
+              "%s occurrences of <%s> replaced with <%s>",
+              axioms.size(), leftIRI.toString(), rightIRI.toString()));
     }
     // Merge subsets into the original ontology
     MergeOperation.mergeInto(subsets, ontology);
@@ -206,7 +211,7 @@ public class ReplaceOperation {
   private static Map<IRI, IRI> parseMappings(IOHelper ioHelper, File mappingsFile, String property)
       throws IOException {
     String fileName = mappingsFile.getPath();
-    String ext = fileName.substring(fileName.lastIndexOf(".")).toLowerCase();
+    String ext = fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
     if (owlOntologyFormats.contains(ext)) {
       OWLOntology mappingsOntology = ioHelper.loadOntology(mappingsFile);
       return parseOWLMappings(ioHelper, mappingsOntology, property);
@@ -304,6 +309,8 @@ public class ReplaceOperation {
     List<String> lines = FileUtils.readLines(mappingsTable);
     // Line number for error messages
     int lineNumber = 0;
+    // Get rid of header
+    lines.remove(0);
     for (String line : lines) {
       lineNumber++;
       if (!line.contains(separator)) {

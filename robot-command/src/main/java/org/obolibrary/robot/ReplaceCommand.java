@@ -29,10 +29,7 @@ public class ReplaceCommand implements Command {
         "p", "property", true, "property used to specify OWL mappings (default IAO:0100001)");
     o.addOption("r", "reverse-mappings", true, "if true, reverse the mappings (default false)");
     o.addOption(
-        "d",
-        "allow-dangling",
-        true,
-        "if true, allow dangling entities as replacements (default false)");
+        "d", "allow-dangling", true, "if true, allow dangling entities in output (default false)");
     options = o;
   }
 
