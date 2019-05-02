@@ -933,12 +933,24 @@ public class CommandLineHelper {
     if (!pattern.contains("*") && !pattern.contains("?")) {
       throw new IllegalArgumentException(wildcardError);
     }
+    // Handle subdirectories
+    String pathName = ".";
+    if (pattern.contains("/")) {
+      pathName = pattern.substring(0, pattern.lastIndexOf("/"));
+      pattern = pattern.substring(pattern.lastIndexOf("/") + 1);
+    }
     FileFilter fileFilter = new WildcardFileFilter(pattern);
-    File[] files = new File(".").listFiles(fileFilter);
+    File[] files = new File(pathName).listFiles(fileFilter);
     if (files == null || files.length < 1) {
       // Warn user, but continue (empty input checked later)
       logger.error("No files match pattern: {}", pattern);
+      return files;
     }
+    StringBuilder info = new StringBuilder();
+    for (File f : files) {
+      info.append(f.getPath()).append(" ");
+    }
+    logger.info(String.format("%d inputs found by pattern: %s", files.length, info.toString()));
     return files;
   }
 
