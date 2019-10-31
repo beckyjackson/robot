@@ -4,7 +4,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -50,25 +50,36 @@ public class CommandLineIT {
    * @throws IOException if the README cannot be read
    */
   private List<String> extractCommands(File docFile) throws IOException {
-    String content = FileUtils.readFileToString(docFile);
-    List<String> lines = Arrays.asList(content.replaceAll("\\r", "").split("\\n"));
-    List<String> commands = new ArrayList<String>();
+    List<String> lines = FileUtils.readLines(docFile);
+    List<String> commands = new ArrayList<>();
 
     boolean collecting = false;
-    String collected = null;
-    for (String line : lines) {
+    StringBuilder collected = null;
+
+    // Iterate through lines to find test commands
+    Iterator<String> itr = lines.iterator();
+    while (itr.hasNext()) {
+      String line = itr.next();
       if (collecting) {
         if (line.startsWith("    ")) {
-          collected += " " + trim(line);
+          collected.append(" ").append(trim(line));
+          if (!itr.hasNext()) {
+            // The block of code might be at the very end
+            // In which case there is no next line and we just add it
+            collecting = false;
+            commands.add(collected.toString());
+            collected = null;
+          }
         } else {
+          // Otherwise, the command has ended because there are no more indented blocks
           collecting = false;
-          commands.add(collected);
+          commands.add(collected.toString());
           collected = null;
         }
       } else {
         if (line.startsWith("    robot")) {
           collecting = true;
-          collected = trim(line);
+          collected = new StringBuilder(trim(line));
         }
       }
     }
@@ -134,7 +145,11 @@ public class CommandLineIT {
   private void compareResults() throws Exception {
     IOHelper ioHelper = new IOHelper();
     File resultsDir = new File(resultsPath);
-    for (File resultFile : resultsDir.listFiles()) {
+    File[] files = resultsDir.listFiles();
+    if (files == null) {
+      throw new IOException(String.format("No files to compare in directory %s!", resultsDir));
+    }
+    for (File resultFile : files) {
       if (!resultFile.isFile()) {
         continue;
       }
@@ -190,6 +205,10 @@ public class CommandLineIT {
     cleanResults();
     File docsFolder = new File(docsPath);
     File[] docs = docsFolder.listFiles();
+    if (docs == null) {
+      throw new IOException(
+          String.format("No docs to get test commands from in directory %s!", docsFolder));
+    }
     // Get commands from each doc (that ends with .md and is not the index)
     List<String> commands = new ArrayList<>();
     for (File d : docs) {
